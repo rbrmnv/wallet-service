@@ -1,9 +1,7 @@
 package ru.romanov.walletservice.model;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -12,8 +10,10 @@ import java.util.UUID;
 @Entity
 @Table(name = "transaction")
 @NoArgsConstructor
+@AllArgsConstructor
 @Setter
 @Getter
+@Builder
 public class Transaction {
 
     @Id

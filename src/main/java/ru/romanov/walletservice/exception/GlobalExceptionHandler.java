@@ -25,13 +25,13 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
-    @ExceptionHandler(InsufficientFundsException.class)
-    public ResponseEntity<ErrorResponse> handleInsufficientFunds(InsufficientFundsException exception) {
+    @ExceptionHandler(NotEnoughAmountException.class)
+    public ResponseEntity<ErrorResponse> handleInsufficientFunds(NotEnoughAmountException exception) {
         return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
-    @ExceptionHandler(CurrencyMismatchException.class)
-    public ResponseEntity<ErrorResponse> handleCurrencyMismatch(CurrencyMismatchException exception) {
+    @ExceptionHandler(CurrencyMistakeException.class)
+    public ResponseEntity<ErrorResponse> handleCurrencyMismatch(CurrencyMistakeException exception) {
         return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
