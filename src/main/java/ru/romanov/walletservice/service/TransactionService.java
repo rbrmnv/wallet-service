@@ -9,7 +9,7 @@ import ru.romanov.walletservice.dto.TransactionResponse;
 import ru.romanov.walletservice.exception.CurrencyMistakeException;
 import ru.romanov.walletservice.exception.NotEnoughAmountException;
 import ru.romanov.walletservice.exception.WalletNotFoundException;
-import ru.romanov.walletservice.mapper.MyMapper;
+import ru.romanov.walletservice.mapper.TransactionMapper;
 import ru.romanov.walletservice.model.Transaction;
 import ru.romanov.walletservice.model.TransactionType;
 import ru.romanov.walletservice.model.Wallet;
@@ -26,7 +26,7 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final WalletRepository walletRepository;
-    private final MyMapper mapper = Mappers.getMapper(MyMapper.class);
+    private final TransactionMapper mapper = Mappers.getMapper(TransactionMapper.class);
 
     @Transactional
     public TransactionResponse transfer(TransactionRequest request) {

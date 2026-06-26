@@ -5,7 +5,7 @@ import org.mapstruct.factory.Mappers;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.romanov.walletservice.dto.WalletResponse;
-import ru.romanov.walletservice.mapper.MyMapper;
+import ru.romanov.walletservice.mapper.WalletMapper;
 import ru.romanov.walletservice.repository.WalletRepository;
 
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.List;
 public class WalletService {
 
     private final WalletRepository repository;
-    private final MyMapper mapper = Mappers.getMapper(MyMapper.class);
+    private final WalletMapper mapper = Mappers.getMapper(WalletMapper.class);
 
     @Transactional
     public List<WalletResponse> getAll(){
