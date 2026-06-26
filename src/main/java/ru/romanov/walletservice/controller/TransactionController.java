@@ -1,7 +1,7 @@
 package ru.romanov.walletservice.controller;
 
 import jakarta.validation.Valid;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,7 +14,7 @@ import ru.romanov.walletservice.service.TransactionService;
 
 @RestController
 @RequestMapping("/api/transactions")
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class TransactionController {
 
     private final TransactionService service;
