@@ -3,6 +3,8 @@ package ru.romanov.walletservice.service;
 import lombok.RequiredArgsConstructor;
 import org.mapstruct.factory.Mappers;
 import org.springframework.stereotype.Service;
+import ru.romanov.walletservice.dto.CurrencyTotalGroups;
+import ru.romanov.walletservice.dto.SummaryResponse;
 import ru.romanov.walletservice.dto.WalletBalanceResponse;
 import ru.romanov.walletservice.exception.WalletNotFoundException;
 import ru.romanov.walletservice.mapper.TransactionMapper;
@@ -12,7 +14,12 @@ import ru.romanov.walletservice.model.Wallet;
 import ru.romanov.walletservice.repository.TransactionRepository;
 import ru.romanov.walletservice.repository.WalletRepository;
 
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -36,6 +43,23 @@ public class ReportService {
         return new WalletBalanceResponse(
                 walletMapper.toResponse(wallet),
                 transactionMapper.toResponseList(listOfTTransactions)
+        );
+    }
+
+    public SummaryResponse getSummeryReport(){
+        Map<String, BigDecimal> totalAmoutByCurrencyGroups = new HashMap<>();
+
+        for (CurrencyTotalGroups currentCurrency: walletRepository.getCurrencyTotalGroupsList()){
+            totalAmoutByCurrencyGroups.put(currentCurrency.currency(), currentCurrency.totalAmount());
+        }
+
+        OffsetDateTime offsetDateTimeStart = OffsetDateTime.now(ZoneOffset.UTC).toLocalDate()
+                .atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        long countOfSuccsesfulTransactions = transactionRepository
+                .countByCreatedAtGreaterThanEqual(offsetDateTimeStart);
+        return new SummaryResponse(
+                totalAmoutByCurrencyGroups, countOfSuccsesfulTransactions
         );
     }
 }

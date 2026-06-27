@@ -5,3 +5,5 @@ databaseChangeLog:
       file: db/changelog/changes/v2_fill_wallets.sql
   - include:
       file: db/changelog/changes/v3_add_transaction_indexes.sql
+  - include:
+      file: db/changelog/changes/v4_add_index_and_fill_extra_wallets.sql
