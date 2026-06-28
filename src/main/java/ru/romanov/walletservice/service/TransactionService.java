@@ -96,7 +96,7 @@ public class TransactionService {
         transaction.setIdempotencyKey(idempotencyKey);
 
         try {
-            Transaction saved = transactionRepository.save(transaction);
+            Transaction saved = transactionRepository.saveAndFlush(transaction);
             return mapper.toResponse(saved);
         } catch (DataIntegrityViolationException exception){
             return findByExistingIdempotencyKey(idempotencyKey)
