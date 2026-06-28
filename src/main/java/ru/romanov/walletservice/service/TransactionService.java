@@ -8,6 +8,7 @@ import ru.romanov.walletservice.dto.TransactionRequest;
 import ru.romanov.walletservice.dto.TransactionResponse;
 import ru.romanov.walletservice.exception.CurrencyMistakeException;
 import ru.romanov.walletservice.exception.NotEnoughAmountException;
+import ru.romanov.walletservice.exception.SelfWalletTransferException;
 import ru.romanov.walletservice.exception.WalletNotFoundException;
 import ru.romanov.walletservice.mapper.TransactionMapper;
 import ru.romanov.walletservice.model.Transaction;
@@ -18,6 +19,7 @@ import ru.romanov.walletservice.repository.WalletRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 
@@ -33,6 +35,11 @@ public class TransactionService {
     public TransactionResponse transfer(TransactionRequest request) {
         Transaction transaction;
         BigDecimal amount = request.amount();
+
+        if (request.fromWalletId() != null && request.fromWalletId().equals(request.toWalletId())) {
+            throw new SelfWalletTransferException(
+                    String.format("Cannot transfer to self wallet: %s", request.fromWalletId()));
+        }
 
         if (request.fromWalletId() == null) {
             Wallet receiver = walletRepository.findWithLockById(request.toWalletId())
@@ -112,7 +119,7 @@ public class TransactionService {
                 .receiver(receiver)
                 .amount(amount)
                 .type(type)
-                .createdAt(OffsetDateTime.now())
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
     }
 }

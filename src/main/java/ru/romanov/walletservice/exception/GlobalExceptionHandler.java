@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import ru.romanov.walletservice.dto.ErrorResponse;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -35,9 +36,14 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
+    @ExceptionHandler(SelfWalletTransferException.class)
+    public ResponseEntity<ErrorResponse> handleSameWallet(SelfWalletTransferException exception) {
+        return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+    }
+
     private ResponseEntity<ErrorResponse> buildErrorResponse(HttpStatus status, String message){
         ErrorResponse response = new ErrorResponse(
-                OffsetDateTime.now(), message
+                OffsetDateTime.now(ZoneOffset.UTC), message
         );
         return ResponseEntity.status(status).body(response);
     }
