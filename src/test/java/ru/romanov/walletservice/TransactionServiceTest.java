@@ -5,6 +5,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.romanov.walletservice.config.CommissionProperties;
 import ru.romanov.walletservice.dto.TransactionRequest;
 import ru.romanov.walletservice.exception.NotEnoughAmountException;
 import ru.romanov.walletservice.model.Transaction;
@@ -14,6 +15,7 @@ import ru.romanov.walletservice.repository.WalletRepository;
 import ru.romanov.walletservice.service.TransactionService;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,39 +35,54 @@ class TransactionServiceTest {
     @Mock
     private TransactionRepository transactionRepository;
 
+    @Mock
+    private CommissionProperties properties;
+
     @InjectMocks
     private TransactionService transactionService;
+
+    private static final UUID COMMISSION_ACCOUNT_ID = UUID
+            .fromString("00000000-0000-0000-0000-000000000001");
+
+    private void mockCommissionConfig() {
+        when(properties.getPercent()).thenReturn(new BigDecimal("0.01"));
+        when(properties.getTechAccounts()).thenReturn(Map.of("RUB", COMMISSION_ACCOUNT_ID));
+    }
+
+    private Wallet buildRUBWallet(UUID id, String balance) {
+        return Wallet.builder()
+                .id(id)
+                .balance(new BigDecimal(balance))
+                .currency("RUB")
+                .build();
+    }
 
     @Test
     void checkRejectOperationTest() {
         UUID senderId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
 
-        Wallet sender = Wallet.builder()
-                .id(senderId)
-                .balance(new BigDecimal("50.00"))
-                .currency("RUB")
-                .build();
+        Wallet sender = buildRUBWallet(senderId, "50.00");
+        Wallet receiver = buildRUBWallet(receiverId, "100.00");
+        Wallet commissionAccount = buildRUBWallet(COMMISSION_ACCOUNT_ID, "0.00");
 
-        Wallet receiver = Wallet.builder()
-                .id(receiverId)
-                .balance(new BigDecimal("100.00"))
-                .currency("RUB")
-                .build();
-
+        mockCommissionConfig();
         when(transactionRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(walletRepository.findById(senderId)).thenReturn(Optional.of(sender));
         when(walletRepository.findWithLockById(senderId)).thenReturn(Optional.of(sender));
         when(walletRepository.findWithLockById(receiverId)).thenReturn(Optional.of(receiver));
+        when(walletRepository.findWithLockById(COMMISSION_ACCOUNT_ID))
+                .thenReturn(Optional.of(commissionAccount));
 
-        TransactionRequest request =
-                new TransactionRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        senderId, receiverId, new BigDecimal("100.00"));
+        TransactionRequest request = new TransactionRequest(
+                UUID.randomUUID(), UUID.randomUUID(), senderId, receiverId, new BigDecimal("100.00"));
 
         assertThatThrownBy(() -> transactionService.transfer(request))
                 .isInstanceOf(NotEnoughAmountException.class);
 
         assertThat(sender.getBalance()).isEqualByComparingTo("50.00");
         assertThat(receiver.getBalance()).isEqualByComparingTo("100.00");
+        assertThat(commissionAccount.getBalance()).isEqualByComparingTo("0.00");
         verify(transactionRepository, never()).saveAndFlush(any());
     }
 
@@ -74,31 +91,27 @@ class TransactionServiceTest {
         UUID senderId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
 
-        Wallet sender = Wallet.builder()
-                .id(receiverId)
-                .balance(new BigDecimal("100.00"))
-                .currency("RUB")
-                .build();
+        Wallet sender = buildRUBWallet(senderId, "100.00");
+        Wallet receiver = buildRUBWallet(receiverId, "100.00");
+        Wallet commissionAccount = buildRUBWallet(COMMISSION_ACCOUNT_ID, "0.00");
 
-        Wallet receiver = Wallet.builder()
-                .id(receiverId)
-                .balance(new BigDecimal("100.00"))
-                .currency("RUB")
-                .build();
-
+        mockCommissionConfig();
         when(transactionRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(walletRepository.findById(senderId)).thenReturn(Optional.of(sender));
         when(walletRepository.findWithLockById(senderId)).thenReturn(Optional.of(sender));
         when(walletRepository.findWithLockById(receiverId)).thenReturn(Optional.of(receiver));
+        when(walletRepository.findWithLockById(COMMISSION_ACCOUNT_ID))
+                .thenReturn(Optional.of(commissionAccount));
         when(transactionRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        TransactionRequest request =
-                new TransactionRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        senderId, receiverId, new BigDecimal("30.00"));
+        TransactionRequest request = new TransactionRequest(
+                UUID.randomUUID(), UUID.randomUUID(), senderId, receiverId, new BigDecimal("30.00"));
 
         transactionService.transfer(request);
 
-        assertThat(sender.getBalance()).isEqualByComparingTo("70.00");
+        assertThat(sender.getBalance()).isEqualByComparingTo("69.70");
         assertThat(receiver.getBalance()).isEqualByComparingTo("130.00");
+        assertThat(commissionAccount.getBalance()).isEqualByComparingTo("0.30");
         verify(transactionRepository).saveAndFlush(any(Transaction.class));
     }
 }

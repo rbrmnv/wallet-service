@@ -5,6 +5,7 @@ import org.mapstruct.factory.Mappers;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.romanov.walletservice.config.CommissionProperties;
 import ru.romanov.walletservice.dto.TransactionRequest;
 import ru.romanov.walletservice.dto.TransactionResponse;
 import ru.romanov.walletservice.exception.CurrencyMistakeException;
@@ -19,10 +20,10 @@ import ru.romanov.walletservice.repository.TransactionRepository;
 import ru.romanov.walletservice.repository.WalletRepository;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 
 @Service
@@ -32,6 +33,7 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final WalletRepository walletRepository;
     private final TransactionMapper mapper = Mappers.getMapper(TransactionMapper.class);
+    private final CommissionProperties properties;
 
     @Transactional
     public TransactionResponse transfer(TransactionRequest request) {
@@ -61,36 +63,34 @@ public class TransactionService {
             UUID firstParticipantId = request.fromWalletId();
             UUID secondParticipantId = request.toWalletId();
 
-            boolean isSenderParticipantIdSmaller  = firstParticipantId.compareTo(secondParticipantId) < 0;
+            Wallet firstParticipant = walletRepository.findById(firstParticipantId)
+                    .orElseThrow(() -> new WalletNotFoundException(
+                            String.format("Wallet with id = %s not found", firstParticipantId)));
+            String currency = firstParticipant.getCurrency();
 
-            UUID smallerId;
-            UUID higherId;
-            if (isSenderParticipantIdSmaller ){
-                smallerId = firstParticipantId;
-                higherId = secondParticipantId;
-            } else {
-                smallerId = secondParticipantId;
-                higherId = firstParticipantId;
+            UUID commissionAccountId = properties.getTechAccounts().get(currency);
+            if (commissionAccountId == null) {
+                throw new CurrencyMistakeException(
+                        String.format("No tech commission account for %s currency ", currency));
             }
 
-            Wallet lower = walletRepository.findWithLockById(smallerId)
-                    .orElseThrow(() -> new WalletNotFoundException(
-                            String.format("Wallet with id = %s not found", smallerId)));
-            Wallet higher = walletRepository.findWithLockById(higherId)
-                    .orElseThrow(() -> new WalletNotFoundException(
-                            String.format("Wallet with id = %s not found", higherId)));
+            List<UUID> currentListOfWallets = new ArrayList<>(List.of(firstParticipantId,
+                    secondParticipantId, commissionAccountId));
+            currentListOfWallets.sort(Comparator.naturalOrder());
 
-            Wallet sender;
-            Wallet receiver;
-            if (isSenderParticipantIdSmaller ){
-                sender = lower;
-                receiver = higher;
-            } else {
-                sender = higher;
-                receiver = lower;
+            Map<UUID, Wallet> lockedMapOfWallets = new HashMap<>();
+            for (UUID walletId : currentListOfWallets) {
+                Wallet wallet = walletRepository.findWithLockById(walletId)
+                        .orElseThrow(() -> new WalletNotFoundException(
+                                String.format("Wallet with id = %s not found", walletId)));
+                lockedMapOfWallets.put(walletId, wallet);
             }
 
-            transaction = paymentOperation(sender, receiver, amount);
+            Wallet sender = lockedMapOfWallets.get(firstParticipantId);
+            Wallet receiver = lockedMapOfWallets.get(secondParticipantId);
+            Wallet commissionAccount = lockedMapOfWallets.get(commissionAccountId);
+
+            transaction = paymentOperation(sender, receiver, commissionAccount, amount);
         }
 
         transaction.setIdempotencyKey(idempotencyKey);
@@ -113,7 +113,8 @@ public class TransactionService {
     }
 
 
-    private Transaction paymentOperation(Wallet sender, Wallet receiver, BigDecimal amount){
+    private Transaction paymentOperation(Wallet sender, Wallet receiver, Wallet commissionAccount,
+                                         BigDecimal amount){
         if (!sender.getCurrency().equals(receiver.getCurrency())){
             throw new CurrencyMistakeException(
                     String.format("Currency mistake from %s to %s",
@@ -121,29 +122,34 @@ public class TransactionService {
             );
         }
 
-        if (sender.getBalance().compareTo(amount) < 0){
+        BigDecimal commision = amount.multiply(properties.getPercent()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal amountWithComisiion = amount.add(commision);
+
+        if (sender.getBalance().compareTo(amountWithComisiion) < 0){
             throw new NotEnoughAmountException(
                     String.format("Sender %s not have enough amount", sender.getId())
             );
         }
 
-        sender.setBalance(sender.getBalance().subtract(amount));
+        sender.setBalance(sender.getBalance().subtract(amountWithComisiion));
         receiver.setBalance(receiver.getBalance().add(amount));
-        return buildTransaction(sender,receiver,amount,TransactionType.PAYMENT);
+        commissionAccount.setBalance(commissionAccount.getBalance().add(commision));
+        return buildTransaction(sender,receiver,amount,TransactionType.PAYMENT,commision);
     }
 
     private Transaction depositOperation(Wallet reciver, BigDecimal amount){
         reciver.setBalance(reciver.getBalance().add(amount));
-        return buildTransaction(null,reciver,amount,TransactionType.DEPOSIT);
+        return buildTransaction(null,reciver,amount,TransactionType.DEPOSIT,BigDecimal.ZERO);
     }
 
-    private Transaction buildTransaction(Wallet sender, Wallet receiver,
-                                         BigDecimal amount, TransactionType type){
+    private Transaction buildTransaction(Wallet sender, Wallet receiver, BigDecimal amount,
+                                         TransactionType type, BigDecimal commission){
         return Transaction.builder()
                 .sender(sender)
                 .receiver(receiver)
                 .amount(amount)
                 .type(type)
+                .commission(commission)
                 .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
     }

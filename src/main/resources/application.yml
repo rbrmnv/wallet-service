@@ -13,3 +13,10 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
+app:
+  commission:
+    percent: 0.01
+    tech-accounts:
+      RUB: "00000000-0000-0000-0000-000000000001"
+      EUR: "00000000-0000-0000-0000-000000000002"
+      USD: "00000000-0000-0000-0000-000000000003"

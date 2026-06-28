@@ -9,3 +9,5 @@ databaseChangeLog:
       file: db/changelog/changes/v4_add_index_and_fill_extra_wallets.sql
   - include:
       file: db/changelog/changes/v5_add_idempotency_key.sql
+  - include:
+      file: db/changelog/changes/v6_add_tech_wallet_and_comission_field.sql
