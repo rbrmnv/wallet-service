@@ -40,12 +40,9 @@ public class TransactionService {
     @CacheEvict(value = "wallets", allEntries = true)
     public TransactionResponse transfer(TransactionRequest request) {
         UUID idempotencyKey = request.idempotencyKey();
-
-        if (idempotencyKey != null) {
-            Optional<TransactionResponse> currentTransaction = findByExistingIdempotencyKey(idempotencyKey);
-            if (currentTransaction.isPresent()) {
-                return currentTransaction.get();
-            }
+        Optional<TransactionResponse> exitingTransaction = findByExistingIdempotencyKey(idempotencyKey);
+        if (exitingTransaction.isPresent()) {
+            return exitingTransaction.get();
         }
 
         if (request.fromWalletId() != null && request.fromWalletId().equals(request.toWalletId())) {
@@ -54,56 +51,68 @@ public class TransactionService {
         }
 
         Transaction transaction;
-        BigDecimal amount = request.amount();
-
-        if (request.fromWalletId() == null) {
-            Wallet receiver = walletRepository.findWithLockById(request.toWalletId())
-                    .orElseThrow(() -> new WalletNotFoundException(
-                            String.format("Receivers wallet  with id = %s not found", request.toWalletId())));
-            transaction = depositOperation(receiver, amount);
+        if (request.fromWalletId() == null){
+            transaction = processDeposit(request);
         } else {
-            UUID firstParticipantId = request.fromWalletId();
-            UUID secondParticipantId = request.toWalletId();
-
-            Wallet firstParticipant = walletRepository.findById(firstParticipantId)
-                    .orElseThrow(() -> new WalletNotFoundException(
-                            String.format("Wallet with id = %s not found", firstParticipantId)));
-            String currency = firstParticipant.getCurrency();
-
-            UUID commissionAccountId = properties.getTechAccounts().get(currency);
-            if (commissionAccountId == null) {
-                throw new CurrencyMistakeException(
-                        String.format("No tech commission account for %s currency ", currency));
-            }
-
-            List<UUID> currentListOfWallets = new ArrayList<>(List.of(firstParticipantId,
-                    secondParticipantId, commissionAccountId));
-            currentListOfWallets.sort(Comparator.naturalOrder());
-
-            Map<UUID, Wallet> lockedMapOfWallets = new HashMap<>();
-            for (UUID walletId : currentListOfWallets) {
-                Wallet wallet = walletRepository.findWithLockById(walletId)
-                        .orElseThrow(() -> new WalletNotFoundException(
-                                String.format("Wallet with id = %s not found", walletId)));
-                lockedMapOfWallets.put(walletId, wallet);
-            }
-
-            Wallet sender = lockedMapOfWallets.get(firstParticipantId);
-            Wallet receiver = lockedMapOfWallets.get(secondParticipantId);
-            Wallet commissionAccount = lockedMapOfWallets.get(commissionAccountId);
-
-            transaction = paymentOperation(sender, receiver, commissionAccount, amount);
+            transaction = processPayment(request);
         }
 
         transaction.setIdempotencyKey(idempotencyKey);
 
         try {
-            Transaction saved = transactionRepository.saveAndFlush(transaction);
-            return mapper.toResponse(saved);
-        } catch (DataIntegrityViolationException exception){
+            return mapper.toResponse(transactionRepository.saveAndFlush(transaction));
+        } catch (DataIntegrityViolationException exception) {
             return findByExistingIdempotencyKey(idempotencyKey)
                     .orElseThrow(() -> exception);
         }
+    }
+
+    private Transaction processDeposit(TransactionRequest request) {
+        Wallet receiver = walletRepository.findWithLockById(request.toWalletId())
+                .orElseThrow(() -> new WalletNotFoundException(
+                        String.format("Receivers wallet with id = %s not found", request.toWalletId())));
+        return depositOperation(receiver, request.amount());
+    }
+
+    private Transaction processPayment(TransactionRequest request) {
+        UUID senderId = request.fromWalletId();
+        UUID receiverId = request.toWalletId();
+
+        UUID commissionAccountId = getCommissionAccountId(senderId);
+
+        Map<UUID, Wallet> lockedWallets = lockWalletsOrdered(
+                List.of(senderId, receiverId, commissionAccountId));
+
+        Wallet sender = lockedWallets.get(senderId);
+        Wallet receiver = lockedWallets.get(receiverId);
+        Wallet commissionAccount = lockedWallets.get(commissionAccountId);
+        return paymentOperation(sender, receiver, commissionAccount, request.amount());
+    }
+
+    private UUID getCommissionAccountId(UUID senderId) {
+        Wallet sender = walletRepository.findById(senderId)
+                .orElseThrow(() -> new WalletNotFoundException(
+                        String.format("Wallet with id = %s not found", senderId)));
+        UUID commissionAccountId = properties.getTechAccounts().get(sender.getCurrency());
+        if (commissionAccountId == null) {
+            throw new CurrencyMistakeException(
+                    String.format("No tech commission account for %s currency", sender.getCurrency()));
+        }
+        return commissionAccountId;
+    }
+
+    private Map<UUID, Wallet> lockWalletsOrdered(List<UUID> walletIds) {
+        List<UUID> sortedIds = new ArrayList<>(walletIds);
+        sortedIds.sort(Comparator.naturalOrder());
+
+        Map<UUID, Wallet> lockedWallets = new HashMap<>();
+        for (UUID walletId : sortedIds) {
+            Wallet wallet = walletRepository.findWithLockById(walletId)
+                    .orElseThrow(() -> new WalletNotFoundException(
+                            String.format("Wallet with id = %s not found", walletId)));
+            lockedWallets.put(walletId, wallet);
+        }
+        return lockedWallets;
     }
 
     private Optional<TransactionResponse> findByExistingIdempotencyKey(UUID idempotencyKey) {
@@ -114,38 +123,36 @@ public class TransactionService {
                 .map(mapper::toResponse);
     }
 
-
     private Transaction paymentOperation(Wallet sender, Wallet receiver, Wallet commissionAccount,
-                                         BigDecimal amount){
-        if (!sender.getCurrency().equals(receiver.getCurrency())){
+                                         BigDecimal amount) {
+        if (!sender.getCurrency().equals(receiver.getCurrency())) {
             throw new CurrencyMistakeException(
                     String.format("Currency mistake from %s to %s",
-                            sender.getCurrency(), receiver.getCurrency())
-            );
+                            sender.getCurrency(), receiver.getCurrency()));
         }
 
-        BigDecimal commision = amount.multiply(properties.getPercent()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal amountWithComisiion = amount.add(commision);
+        BigDecimal commission = amount.multiply(properties.getPercent())
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal amountWithCommission = amount.add(commission);
 
-        if (sender.getBalance().compareTo(amountWithComisiion) < 0){
+        if (sender.getBalance().compareTo(amountWithCommission) < 0) {
             throw new NotEnoughAmountException(
-                    String.format("Sender %s not have enough amount", sender.getId())
-            );
+                    String.format("Sender %s not have enough amount", sender.getId()));
         }
 
-        sender.setBalance(sender.getBalance().subtract(amountWithComisiion));
+        sender.setBalance(sender.getBalance().subtract(amountWithCommission));
         receiver.setBalance(receiver.getBalance().add(amount));
-        commissionAccount.setBalance(commissionAccount.getBalance().add(commision));
-        return buildTransaction(sender,receiver,amount,TransactionType.PAYMENT,commision);
+        commissionAccount.setBalance(commissionAccount.getBalance().add(commission));
+        return buildTransaction(sender, receiver, amount, TransactionType.PAYMENT, commission);
     }
 
-    private Transaction depositOperation(Wallet reciver, BigDecimal amount){
-        reciver.setBalance(reciver.getBalance().add(amount));
-        return buildTransaction(null,reciver,amount,TransactionType.DEPOSIT,BigDecimal.ZERO);
+    private Transaction depositOperation(Wallet receiver, BigDecimal amount) {
+        receiver.setBalance(receiver.getBalance().add(amount));
+        return buildTransaction(null, receiver, amount, TransactionType.DEPOSIT, BigDecimal.ZERO);
     }
 
     private Transaction buildTransaction(Wallet sender, Wallet receiver, BigDecimal amount,
-                                         TransactionType type, BigDecimal commission){
+                                         TransactionType type, BigDecimal commission) {
         return Transaction.builder()
                 .sender(sender)
                 .receiver(receiver)
@@ -156,4 +163,3 @@ public class TransactionService {
                 .build();
     }
 }
-
