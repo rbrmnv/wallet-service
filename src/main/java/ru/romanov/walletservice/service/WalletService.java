@@ -2,6 +2,7 @@ package ru.romanov.walletservice.service;
 
 import lombok.RequiredArgsConstructor;
 import org.mapstruct.factory.Mappers;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.romanov.walletservice.dto.WalletResponse;
@@ -18,6 +19,7 @@ public class WalletService {
     private final WalletMapper mapper = Mappers.getMapper(WalletMapper.class);
 
     @Transactional
+    @Cacheable("wallets")
     public List<WalletResponse> getAll(){
         return mapper.toResponseList(repository.findAll());
     }

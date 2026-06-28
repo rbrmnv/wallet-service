@@ -2,6 +2,7 @@ package ru.romanov.walletservice.service;
 
 import lombok.RequiredArgsConstructor;
 import org.mapstruct.factory.Mappers;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ public class TransactionService {
     private final CommissionProperties properties;
 
     @Transactional
+    @CacheEvict(value = "wallets", allEntries = true)
     public TransactionResponse transfer(TransactionRequest request) {
         UUID idempotencyKey = request.idempotencyKey();
 
