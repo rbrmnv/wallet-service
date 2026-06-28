@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record TransactionRequest(
     UUID id,
+    UUID idempotencyKey,
     UUID fromWalletId,
     @NotNull UUID toWalletId,
     @NotNull @Positive BigDecimal amount

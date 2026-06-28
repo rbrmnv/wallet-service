@@ -20,6 +20,9 @@ public class Transaction {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "idempotency_key")
+    private UUID idempotencyKey;
+
     @JoinColumn(name = "sender_id")
     @ManyToOne(fetch = FetchType.LAZY)
     private Wallet sender;

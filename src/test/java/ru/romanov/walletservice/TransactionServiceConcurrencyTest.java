@@ -68,7 +68,7 @@ class TransactionServiceConcurrencyTest {
             executor.submit(() -> {
                 try {
                     transactionService.transfer(
-                            new TransactionRequest(null, aId, bId, new BigDecimal("10.00")));
+                            new TransactionRequest(null, null, aId, bId, new BigDecimal("10.00")));
                 } catch (Exception ignored) {
                 } finally {
                     done.countDown();
@@ -77,7 +77,7 @@ class TransactionServiceConcurrencyTest {
             executor.submit(() -> {
                 try {
                     transactionService.transfer(
-                            new TransactionRequest(null, bId, aId, new BigDecimal("10.00")));
+                            new TransactionRequest(null, null, bId, aId, new BigDecimal("10.00")));
                 } catch (Exception ignored) {
                 } finally {
                     done.countDown();

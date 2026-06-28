@@ -7,6 +7,7 @@ import ru.romanov.walletservice.model.Transaction;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
@@ -15,4 +16,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByWalletId(@Param("walletId") UUID walletId);
 
     long countByCreatedAtGreaterThanEqual(OffsetDateTime time);
+
+    Optional<Transaction> findByIdempotencyKey(UUID idempotencyKey);
 }

@@ -2,6 +2,7 @@ package ru.romanov.walletservice.service;
 
 import lombok.RequiredArgsConstructor;
 import org.mapstruct.factory.Mappers;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.romanov.walletservice.dto.TransactionRequest;
@@ -20,6 +21,7 @@ import ru.romanov.walletservice.repository.WalletRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 
 
@@ -33,13 +35,22 @@ public class TransactionService {
 
     @Transactional
     public TransactionResponse transfer(TransactionRequest request) {
-        Transaction transaction;
-        BigDecimal amount = request.amount();
+        UUID idempotencyKey = request.idempotencyKey();
+
+        if (idempotencyKey != null) {
+            Optional<TransactionResponse> currentTransaction = findByExistingIdempotencyKey(idempotencyKey);
+            if (currentTransaction.isPresent()) {
+                return currentTransaction.get();
+            }
+        }
 
         if (request.fromWalletId() != null && request.fromWalletId().equals(request.toWalletId())) {
             throw new SelfWalletTransferException(
                     String.format("Cannot transfer to self wallet: %s", request.fromWalletId()));
         }
+
+        Transaction transaction;
+        BigDecimal amount = request.amount();
 
         if (request.fromWalletId() == null) {
             Wallet receiver = walletRepository.findWithLockById(request.toWalletId())
@@ -82,8 +93,23 @@ public class TransactionService {
             transaction = paymentOperation(sender, receiver, amount);
         }
 
-        Transaction saved = transactionRepository.save(transaction);
-        return mapper.toResponse(saved);
+        transaction.setIdempotencyKey(idempotencyKey);
+
+        try {
+            Transaction saved = transactionRepository.save(transaction);
+            return mapper.toResponse(saved);
+        } catch (DataIntegrityViolationException exception){
+            return findByExistingIdempotencyKey(idempotencyKey)
+                    .orElseThrow(() -> exception);
+        }
+    }
+
+    private Optional<TransactionResponse> findByExistingIdempotencyKey(UUID idempotencyKey) {
+        if (idempotencyKey == null) {
+            return Optional.empty();
+        }
+        return transactionRepository.findByIdempotencyKey(idempotencyKey)
+                .map(mapper::toResponse);
     }
 
 
@@ -110,7 +136,6 @@ public class TransactionService {
         reciver.setBalance(reciver.getBalance().add(amount));
         return buildTransaction(null,reciver,amount,TransactionType.DEPOSIT);
     }
-
 
     private Transaction buildTransaction(Wallet sender, Wallet receiver,
                                          BigDecimal amount, TransactionType type){
