@@ -38,6 +38,9 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     private TransactionType type;
 
+    @Column(name = "commission")
+    private BigDecimal commission;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 }
