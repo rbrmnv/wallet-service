@@ -1,0 +1,144 @@
+openapi: 3.0.1
+info:
+  title: OpenAPI definition
+  version: v0
+servers:
+- url: http://localhost:8080
+  description: Generated server url
+paths:
+  /api/transactions:
+    post:
+      tags:
+      - transaction-controller
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+  /api/wallets:
+    get:
+      tags:
+      - wallet-controller
+      operationId: getAll
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WalletResponse"
+  /api/reports/summary:
+    get:
+      tags:
+      - report-controller
+      operationId: getSummeryReport
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SummaryResponse"
+  /api/reports/balance/{walletId}:
+    get:
+      tags:
+      - report-controller
+      operationId: getWalletBalance
+      parameters:
+      - name: walletId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WalletBalanceResponse"
+components:
+  schemas:
+    TransactionRequest:
+      required:
+      - amount
+      - toWalletId
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        idempotencyKey:
+          type: string
+          format: uuid
+        fromWalletId:
+          type: string
+          format: uuid
+        toWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+    TransactionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fromWalletId:
+          type: string
+          format: uuid
+        toWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        type:
+          type: string
+          enum:
+          - PAYMENT
+          - DEPOSIT
+        createdAt:
+          type: string
+          format: date-time
+    WalletResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        balance:
+          type: number
+        currency:
+          type: string
+    SummaryResponse:
+      type: object
+      properties:
+        totalAmoutByCurrencyGroups:
+          type: object
+          additionalProperties:
+            type: number
+        countOfSuccsesfulTransactions:
+          type: integer
+          format: int64
+    WalletBalanceResponse:
+      type: object
+      properties:
+        walletResponse:
+          $ref: "#/components/schemas/WalletResponse"
+        listOfTTransactionResponses:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionResponse"
