@@ -18,6 +18,7 @@ import ru.romanov.walletservice.repository.WalletRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 
 @Service
@@ -32,23 +33,50 @@ public class TransactionService {
     public TransactionResponse transfer(TransactionRequest request) {
         Transaction transaction;
         BigDecimal amount = request.amount();
-        Wallet reciver = walletRepository.findWithLockById(request.toWalletId())
-                .orElseThrow(() -> new WalletNotFoundException(
-                        String.format("Wallet with id = %s not found", request.toWalletId())
-                ));
 
-        if (request.fromWalletId() == null){
-            transaction = depositOperation(reciver, amount);
-        } else {
-            Wallet sender = walletRepository.findWithLockById(request.fromWalletId())
+        if (request.fromWalletId() == null) {
+            Wallet receiver = walletRepository.findWithLockById(request.toWalletId())
                     .orElseThrow(() -> new WalletNotFoundException(
-                            String.format("Wallet with id = %s not found", request.fromWalletId())
-                    ));
-            transaction = paymentOperation(sender, reciver, amount);
+                            String.format("Receivers wallet  with id = %s not found", request.toWalletId())));
+            transaction = depositOperation(receiver, amount);
+        } else {
+            UUID firstParticipantId = request.fromWalletId();
+            UUID secondParticipantId = request.toWalletId();
+
+            boolean isSenderParticipantIdSmaller  = firstParticipantId.compareTo(secondParticipantId) < 0;
+
+            UUID smallerId;
+            UUID higherId;
+            if (isSenderParticipantIdSmaller ){
+                smallerId = firstParticipantId;
+                higherId = secondParticipantId;
+            } else {
+                smallerId = secondParticipantId;
+                higherId = firstParticipantId;
+            }
+
+            Wallet lower = walletRepository.findWithLockById(smallerId)
+                    .orElseThrow(() -> new WalletNotFoundException(
+                            String.format("Wallet with id = %s not found", smallerId)));
+            Wallet higher = walletRepository.findWithLockById(higherId)
+                    .orElseThrow(() -> new WalletNotFoundException(
+                            String.format("Wallet with id = %s not found", higherId)));
+
+            Wallet sender;
+            Wallet receiver;
+            if (isSenderParticipantIdSmaller ){
+                sender = lower;
+                receiver = higher;
+            } else {
+                sender = higher;
+                receiver = lower;
+            }
+
+            transaction = paymentOperation(sender, receiver, amount);
         }
 
-        Transaction currentTransaction = transactionRepository.save(transaction);
-        return mapper.toResponse(currentTransaction);
+        Transaction saved = transactionRepository.save(transaction);
+        return mapper.toResponse(saved);
     }
 
 
